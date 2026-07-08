@@ -373,14 +373,24 @@ def compute_combined_logprob(gen_logprob, copy_score, source_indices,
 def compute_rewards(generated_tokens, requestable_slots_requested):
     """
     Hitung per-step reward untuk RL fine-tuning (Section 4.4).
-    
-    r(j) = +1 jika token yang di-generate adalah placeholder slot yang diminta user
-    r(j) = -0.1 untuk token lainnya
-    
+
+    Skema reward (revisi — desain lama menghukum SETIAP token normal -0.1
+    sehingga policy kolaps jadi output slot telanjang / respons kosong):
+
+      r(j) = +RL_REWARD_POS          → token adalah placeholder slot yang diminta
+                                        user (hanya diberi SEKALI per slot, agar
+                                        model tidak spam token slot yang sama)
+      r(j) = RL_REWARD_HALLUCINATION → token placeholder slot yang TIDAK diminta
+                                        (halusinasi slot)
+      r(j) = RL_REWARD_NEG (=0)      → token lainnya → netral, tidak dihukum
+
+    Reward normal token dibuat netral supaya kelancaran bahasa dijaga oleh
+    supervised anchor (mixed objective), bukan dirusak oleh RL.
+
     Args:
         generated_tokens: list of token strings dari response
         requestable_slots_requested: list of slot names yang diminta user
-        
+
     Returns:
         rewards: list of float, satu per token
     """
@@ -395,16 +405,23 @@ def compute_rewards(generated_tokens, requestable_slots_requested):
         "name": "NAME_SLOT",
     }
 
+    all_placeholders = {s.lower() for s in config.SLOT_TOKENS}
+
     expected_placeholders = set()
     for slot in requestable_slots_requested:
         ph = slot_to_placeholder.get(slot.lower())
         if ph:
             expected_placeholders.add(ph.lower())
 
+    rewarded = set()  # slot yang sudah diberi reward positif
     rewards = []
     for token in generated_tokens:
-        if token.lower() in expected_placeholders:
+        tok = token.lower()
+        if tok in expected_placeholders and tok not in rewarded:
             rewards.append(config.RL_REWARD_POS)
+            rewarded.add(tok)
+        elif tok in all_placeholders and tok not in expected_placeholders:
+            rewards.append(config.RL_REWARD_HALLUCINATION)
         else:
             rewards.append(config.RL_REWARD_NEG)
 

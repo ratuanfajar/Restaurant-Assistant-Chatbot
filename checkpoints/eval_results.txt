@@ -1,3 +1,3 @@
-BLEU: 0.0001
-Entity_Match_Rate: 0.5432
-Success_F1: 0.4503
+BLEU: 0.1486
+Entity_Match_Rate: 0.8327
+Success_F1: 0.8955

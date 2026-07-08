@@ -62,15 +62,17 @@ def delexicalize_response(response, entity=None, database=None):
     if database is None:
         return delex
 
+    # Kumpulkan nilai informable unik (food/area/pricerange) untuk di-delex.
+    # Ini nilai pendek & umum (mis. "italian", "centre", "cheap") sehingga
+    # diganti dengan word-boundary agar tidak merusak kata lain.
+    food_values, area_values, price_values = set(), set(), set()
+
     # Cari semua entity di database yang mungkin muncul di response
     for entry in database:
         name = entry.get("name", "").lower()
         address = entry.get("address", "").lower()
         phone = entry.get("phone", "").lower()
         postcode = entry.get("postcode", "").lower()
-        food = entry.get("food", "").lower()
-        area_val = entry.get("area", "").lower()
-        price = entry.get("pricerange", "").lower()
 
         # Ganti yang paling panjang dulu (name, address) untuk menghindari partial match
         if name and name in delex:
@@ -81,6 +83,21 @@ def delexicalize_response(response, entity=None, database=None):
             delex = delex.replace(phone, "PHONE_SLOT")
         if postcode and postcode in delex:
             delex = delex.replace(postcode, "POSTCODE_SLOT")
+
+        if entry.get("food"):
+            food_values.add(entry["food"].lower())
+        if entry.get("area"):
+            area_values.add(entry["area"].lower())
+        if entry.get("pricerange"):
+            price_values.add(entry["pricerange"].lower())
+
+    # Delex food/area/pricerange (nilai terpanjang dulu, word-boundary).
+    for value in sorted(food_values, key=len, reverse=True):
+        delex = re.sub(rf"\b{re.escape(value)}\b", "FOOD_SLOT", delex)
+    for value in sorted(area_values, key=len, reverse=True):
+        delex = re.sub(rf"\b{re.escape(value)}\b", "AREA_SLOT", delex)
+    for value in sorted(price_values, key=len, reverse=True):
+        delex = re.sub(rf"\b{re.escape(value)}\b", "PRICERANGE_SLOT", delex)
 
     return delex
 
