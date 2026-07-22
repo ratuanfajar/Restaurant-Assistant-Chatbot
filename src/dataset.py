@@ -14,7 +14,7 @@ from torch.utils.data import Dataset, DataLoader
 from torch.nn.utils.rnn import pad_sequence
 
 import src.config as config
-from src.preprocess import tokenize, tokens_to_indices
+from src.preprocessing import tokenize, tokens_to_indices
 
 
 class SequicityDataset(Dataset):

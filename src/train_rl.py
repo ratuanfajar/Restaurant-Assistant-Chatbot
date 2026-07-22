@@ -31,7 +31,7 @@ import torch
 import torch.optim as optim
 
 import src.config as config
-from src.preprocess import tokenize, tokens_to_indices
+from src.preprocessing import tokenize, tokens_to_indices
 from src.model import _combine_copy_probs
 from src.utils import (
     get_kt_from_bspan, parse_bspan, compute_rewards, compute_returns,
