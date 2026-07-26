@@ -16,7 +16,7 @@ import torch.optim as optim
 import src.config as config
 from src.model import TSCP
 from src.dataset import get_dataloader
-from src.preprocess import prepare_data, tokenize, tokens_to_indices
+from src.preprocessing import prepare_data, tokenize, tokens_to_indices
 from src.utils import get_kt_from_bspan, parse_bspan
 
 

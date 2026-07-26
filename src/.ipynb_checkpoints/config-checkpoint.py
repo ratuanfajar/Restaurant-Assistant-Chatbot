@@ -62,7 +62,6 @@ SL_PATIENCE = 10  # early stopping patience
 
 # === Training — Reinforcement Learning (Section 5.2) ===
 RL_LEARNING_RATE = 0.0001
-<<<<<<< HEAD
 RL_EPOCHS = 15
 RL_BATCH_SIZE = 1  # RL biasanya per-sample
 RL_LAMBDA = 0.8  # decay parameter untuk return
@@ -70,14 +69,6 @@ RL_BEAM_SIZE = 10  # beam size untuk inference
 RL_REWARD_POS = 1.0           # token = request slot yang diminta user (reward pertama saja)
 RL_REWARD_NEG = -0.1           # token normal → netral (bukan hukuman, agar bahasa tidak rusak)
 RL_REWARD_HALLUCINATION = -0.1  # placeholder slot yang TIDAK diminta user (halusinasi
-=======
-RL_EPOCHS = 50
-RL_BATCH_SIZE = 1  # RL biasanya per-sample
-RL_LAMBDA = 0.8  # decay parameter untuk return
-RL_REWARD_POS = 1.0            # token = request slot yang diminta user (reward pertama saja)
-RL_REWARD_NEG = 0.0           # token normal → netral (bukan hukuman, agar bahasa tidak rusak)
-RL_REWARD_HALLUCINATION = -0.5  # placeholder slot yang TIDAK diminta user (halusinasi)
->>>>>>> upstream/master
 # Bobot supervised anchor pada mixed objective RL (mencegah catastrophic forgetting).
 RL_SUPERVISED_ALPHA = 0.5
 # Jumlah sample dev yang dipakai untuk memilih checkpoint RL terbaik (berbasis Success-F1).

@@ -12,7 +12,7 @@ from collections import defaultdict
 from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
 
 import src.config as config
-from src.preprocess import tokenize, tokens_to_indices
+from src.preprocessing import tokenize, tokens_to_indices
 from src.model import _combine_copy_probs
 from src.utils import (
     parse_bspan, search_kb, get_kt_from_bspan,

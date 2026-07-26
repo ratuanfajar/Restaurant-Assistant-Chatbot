@@ -15,7 +15,7 @@ import sys
 import torch
 
 import src.config as config
-from src.preprocess import prepare_data
+from src.preprocessing import prepare_data
 from src.train_supervised import train_supervised
 from src.train_rl import train_rl
 from src.evaluate import evaluate_model

@@ -15,7 +15,7 @@ import os
 
 import src.config as config
 from src.model import TSCP
-from src.preprocess import tokenize, tokens_to_indices
+from src.preprocessing import tokenize, tokens_to_indices
 from src.evaluate import greedy_decode_bspan, greedy_decode_response
 from src.utils import (
     search_kb, get_kt_from_bspan, lexicalize_response,
