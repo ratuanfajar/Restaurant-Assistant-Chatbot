@@ -89,11 +89,15 @@ if prompt := st.chat_input("Contoh: i want an expensive restaurant in the south"
         if show_debug:
             with st.expander("🔍 Detail model (turn ini)"):
                 st.markdown(f"**Belief span (B_t):** `{result['bspan']}`")
-                kt_label = {0: "no match", 1: "exact match", 2: "multiple match"}
-                kt_idx = result["kt"].index(max(result["kt"])) if result["kt"] else -1
+                status_label = {
+                    "no_constraint": "belum ada constraint",
+                    "no_match": "no match", "exact": "exact match",
+                    "multiple": "multiple match", "empty_input": "input kosong",
+                }
                 st.markdown(
                     f"**KB search (k_t):** `{result['kt']}` "
-                    f"→ {kt_label.get(kt_idx, '-')} ({result['num_matches']} restoran cocok)"
+                    f"→ {status_label.get(result.get('status'), '-')} "
+                    f"({result['num_matches']} restoran cocok)"
                 )
                 st.markdown(f"**Response (delex):** `{result['response_delex']}`")
                 if result.get("kb_match"):

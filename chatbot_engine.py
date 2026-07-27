@@ -214,21 +214,43 @@ def parse_bspan(bspan_text):
 
 
 def search_kb(bspan_text, database):
-    """Cari restoran yang cocok dgn semua informable value. Return (matches, kt one-hot)."""
+    """
+    Cari restoran yang cocok dgn semua informable value.
+    Return (matches_untuk_lexicalize, kt one-hot, status).
+
+    - status "no_constraint": belum ada constraint -> k_t multiple, TAPI jangan pilih
+      restoran spesifik (matches kosong) agar tidak melexicalize entri acak.
+    - status "no_match": ada constraint tapi 0 hasil -> k_t [1,0,0], matches kosong.
+    - status "exact"/"multiple": ada hasil -> lexicalize dari matches[0] (paper: ambil 1 entri).
+    """
     informable, _ = parse_bspan(bspan_text)
     if not informable:
-        return database, torch.tensor([0., 0., 1.])  # tanpa constraint -> anggap multiple
+        return [], torch.tensor([0., 0., 1.]), "no_constraint"
     matches = [e for e in database
                if all(any(str(e.get(slot, "")).lower() == v.lower() for slot in INFORMABLE_SLOTS)
                       for v in informable)]
     n = len(matches)
     if n == 0:
-        kt = torch.tensor([1., 0., 0.])
+        return [], torch.tensor([1., 0., 0.]), "no_match"
     elif n == 1:
-        kt = torch.tensor([0., 1., 0.])
-    else:
-        kt = torch.tensor([0., 0., 1.])
-    return matches, kt
+        return matches, torch.tensor([0., 1., 0.]), "exact"
+    return matches, torch.tensor([0., 0., 1.]), "multiple"
+
+
+# Fallback bila placeholder tidak bisa dilexicalize (mis. no_match / field kosong),
+# supaya token mentah seperti NAME_SLOT tidak pernah bocor ke user.
+_SLOT_FALLBACK = {
+    "NAME_SLOT": "the restaurant", "ADDRESS_SLOT": "the address",
+    "PHONE_SLOT": "the phone number", "POSTCODE_SLOT": "the postcode",
+    "FOOD_SLOT": "that type of", "AREA_SLOT": "that area",
+    "PRICERANGE_SLOT": "that price range",
+}
+
+
+def strip_leftover_slots(text):
+    for slot, repl in _SLOT_FALLBACK.items():
+        text = text.replace(slot, repl)
+    return text
 
 
 def resolve_inconsistent_bspan(bspan_text, database):
@@ -325,9 +347,24 @@ class RestaurantAssistant:
         w2i, i2w, device = self.word2idx, self.idx2word, self.device
         model = self.model
 
+        # 0. guard input kosong/whitespace: jangan jalankan model & jangan ubah state
+        user_clean = user_utterance.lower().strip()
+        if not user_clean:
+            return {
+                "bspan": self.prev_bspan,
+                "response": "Boleh beri tahu jenis restoran yang Anda cari? "
+                            "(mis. jenis masakan, area centre/north/south/east/west, "
+                            "atau harga cheap/moderate/expensive)",
+                "response_delex": "",
+                "num_matches": 0,
+                "kt": [0., 0., 1.],
+                "kb_match": None,
+                "status": "empty_input",
+            }
+
         # 1. format input B_{t-1} R_{t-1} U_t
         parts = [p for p in (self.prev_bspan, self.prev_response) if p]
-        parts.append(user_utterance.lower().strip())
+        parts.append(user_clean)
         input_text = " ".join(parts)
         input_tokens = tokenize(input_text)
 
@@ -346,7 +383,7 @@ class RestaurantAssistant:
 
         # 4. post-process + KB search
         bspan_text = resolve_inconsistent_bspan(bspan_text, self.database)
-        kb_matches, kt = search_kb(bspan_text, self.database)
+        kb_matches, kt, kb_status = search_kb(bspan_text, self.database)
         kt = kt.to(device)
 
         # 5. bspan hidden states untuk stage 2
@@ -365,8 +402,9 @@ class RestaurantAssistant:
             MAX_DECODE_LEN_RESPONSE, device)
         response_delex = " ".join(response_tokens)
 
-        # 7. lexicalize
+        # 7. lexicalize (hanya bila ada entri terpilih) + bersihkan placeholder sisa
         response_final = lexicalize_response(response_delex, kb_matches)
+        response_final = strip_leftover_slots(response_final)
 
         # 8. update state (konteks turn berikutnya pakai response DELEX, spt training)
         self.prev_bspan = bspan_text
@@ -376,7 +414,8 @@ class RestaurantAssistant:
             "bspan": bspan_text,
             "response": response_final,
             "response_delex": response_delex,
-            "num_matches": 0 if kb_matches is self.database else len(kb_matches),
+            "num_matches": len(kb_matches),
             "kt": kt.tolist(),
-            "kb_match": kb_matches[0] if kb_matches and kb_matches is not self.database else None,
+            "kb_match": kb_matches[0] if kb_matches else None,
+            "status": kb_status,
         }
