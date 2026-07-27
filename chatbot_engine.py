@@ -2,9 +2,8 @@
 Engine inferensi TSCP (Two Stage CopyNet) untuk chatbot restoran.
 
 Mandiri: hanya butuh checkpoint (menyimpan word2idx-nya sendiri) + CamRestDB.json.
-Arsitektur di sini identik dengan yang dipakai saat training checkpoint
-(lowercase belief-span tags <inf>/<req>, vocab 755), sehingga state_dict
-langsung ter-load tanpa penyesuaian.
+Arsitektur di sini identik dengan yang melatih checkpoint v2
+(belief-span tags <Inf>/<Req>, vocab 613), sehingga state_dict langsung ter-load.
 
 Alur per turn (mengikuti paper Sequicity, Lei et al. 2018):
     input  = B_{t-1} + R_{t-1} + U_t
@@ -23,10 +22,10 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # ---------------------------------------------------------------------------
-# Konstanta (harus cocok dengan konvensi checkpoint: lowercase tags)
+# Konstanta (harus cocok dengan konvensi checkpoint v2: tag kapital <Inf>/<Req>)
 # ---------------------------------------------------------------------------
 PAD_TOKEN, SOS_TOKEN, EOS_TOKEN, UNK_TOKEN = "<pad>", "<sos>", "<eos>", "<unk>"
-INF_OPEN, INF_CLOSE, REQ_OPEN, REQ_CLOSE = "<inf>", "</inf>", "<req>", "</req>"
+INF_OPEN, INF_CLOSE, REQ_OPEN, REQ_CLOSE = "<Inf>", "</Inf>", "<Req>", "</Req>"
 SLOT_TOKENS = ["NAME_SLOT", "ADDRESS_SLOT", "PHONE_SLOT", "POSTCODE_SLOT",
                "FOOD_SLOT", "AREA_SLOT", "PRICERANGE_SLOT"]
 SPECIAL_TOKENS = [PAD_TOKEN, SOS_TOKEN, EOS_TOKEN, UNK_TOKEN,
@@ -67,6 +66,22 @@ class Encoder(nn.Module):
         return outputs, hidden
 
 
+class Attn(nn.Module):
+    """Attention Bahdanau: skor v^T tanh(W1 memory + W2 h_dec) -> context (Eq. 1-2)."""
+
+    def __init__(self, hidden_size):
+        super().__init__()
+        self.W1 = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.W2 = nn.Linear(hidden_size, hidden_size, bias=False)
+        self.v = nn.Linear(hidden_size, 1, bias=False)
+
+    def context(self, memory, h_dec, src_mask=None):
+        e = self.v(torch.tanh(self.W1(memory) + self.W2(h_dec).unsqueeze(1))).squeeze(2)
+        if src_mask is not None:
+            e = e.masked_fill(~src_mask, -1e9)
+        return torch.bmm(F.softmax(e, dim=1).unsqueeze(1), memory).squeeze(1)
+
+
 class DecoderStage1(nn.Module):
     """Generate belief span: attention (Eq.1-3) + copy dari input X (Eq.5-6)."""
 
@@ -77,28 +92,16 @@ class DecoderStage1(nn.Module):
         self.embedding = nn.Embedding(vocab_size, embed_size, padding_idx=0)
         self.gru = nn.GRU(embed_size, hidden_size, num_layers=num_layers,
                           batch_first=True, dropout=dropout if num_layers > 1 else 0.0)
-        self.W1 = nn.Linear(hidden_size, hidden_size, bias=False)
-        self.W2 = nn.Linear(hidden_size, hidden_size, bias=False)
-        self.v = nn.Linear(hidden_size, 1, bias=False)
+        self.attn = Attn(hidden_size)
         self.output_proj = nn.Linear(hidden_size * 2, vocab_size)
         self.W_copy = nn.Linear(hidden_size, hidden_size, bias=False)
 
     def forward_step(self, dec_input, hidden, encoder_outputs, src_mask=None):
-        embedded = self.embedding(dec_input)
-        gru_out, new_hidden = self.gru(embedded, hidden)
+        gru_out, new_hidden = self.gru(self.embedding(dec_input), hidden)
         h_dec = gru_out.squeeze(1)
-
-        enc_proj = self.W1(encoder_outputs)
-        dec_proj = self.W2(h_dec).unsqueeze(1).expand_as(enc_proj)
-        energy = self.v(torch.tanh(enc_proj + dec_proj)).squeeze(2)
-        if src_mask is not None:
-            energy = energy.masked_fill(~src_mask, -1e9)
-        attn_weights = F.softmax(energy, dim=1)
-        context = torch.bmm(attn_weights.unsqueeze(1), encoder_outputs).squeeze(1)
-
+        context = self.attn.context(encoder_outputs, h_dec, src_mask)
         gen_logits = self.output_proj(torch.cat([context, h_dec], dim=1))
-        copy_proj = torch.sigmoid(self.W_copy(encoder_outputs))
-        copy_score = torch.bmm(copy_proj, h_dec.unsqueeze(2)).squeeze(2)
+        copy_score = torch.bmm(torch.sigmoid(self.W_copy(encoder_outputs)), h_dec.unsqueeze(2)).squeeze(2)
         return gen_logits, copy_score, new_hidden
 
 
@@ -112,29 +115,17 @@ class DecoderStage2(nn.Module):
         self.embedding = nn.Embedding(vocab_size, embed_size, padding_idx=0)
         self.gru = nn.GRU(embed_size + kb_size, hidden_size, num_layers=num_layers,
                           batch_first=True, dropout=dropout if num_layers > 1 else 0.0)
-        self.W1 = nn.Linear(hidden_size, hidden_size, bias=False)
-        self.W2 = nn.Linear(hidden_size, hidden_size, bias=False)
-        self.v = nn.Linear(hidden_size, 1, bias=False)
+        self.attn = Attn(hidden_size)
         self.output_proj = nn.Linear(hidden_size * 2, vocab_size)
         self.W_copy = nn.Linear(hidden_size, hidden_size, bias=False)
 
     def forward_step(self, dec_input, hidden, bspan_outputs, kt, src_mask=None):
-        embedded = self.embedding(dec_input)
-        gru_input = torch.cat([embedded, kt.unsqueeze(1)], dim=2)
+        gru_input = torch.cat([self.embedding(dec_input), kt.unsqueeze(1)], dim=2)
         gru_out, new_hidden = self.gru(gru_input, hidden)
         h_dec = gru_out.squeeze(1)
-
-        bspan_proj = self.W1(bspan_outputs)
-        dec_proj = self.W2(h_dec).unsqueeze(1).expand_as(bspan_proj)
-        energy = self.v(torch.tanh(bspan_proj + dec_proj)).squeeze(2)
-        if src_mask is not None:
-            energy = energy.masked_fill(~src_mask, -1e9)
-        attn_weights = F.softmax(energy, dim=1)
-        context = torch.bmm(attn_weights.unsqueeze(1), bspan_outputs).squeeze(1)
-
+        context = self.attn.context(bspan_outputs, h_dec, src_mask)
         gen_logits = self.output_proj(torch.cat([context, h_dec], dim=1))
-        copy_proj = torch.sigmoid(self.W_copy(bspan_outputs))
-        copy_score = torch.bmm(copy_proj, h_dec.unsqueeze(2)).squeeze(2)
+        copy_score = torch.bmm(torch.sigmoid(self.W_copy(bspan_outputs)), h_dec.unsqueeze(2)).squeeze(2)
         return gen_logits, copy_score, new_hidden
 
 
@@ -151,15 +142,15 @@ class TSCP(nn.Module):
 
 
 def combine_copy_probs(gen_logits, copy_score, source_indices, ext_vocab_size, vocab_size, src_mask=None):
-    """Gabung P_generate + P_copy ke extended vocab (V ∪ X), lalu log_softmax."""
-    batch_size = gen_logits.size(0)
-    device = gen_logits.device
-    extended_logits = torch.full((batch_size, ext_vocab_size), -1e10, device=device)
-    extended_logits[:, :vocab_size] = gen_logits
+    """P_final = P_generate + P_copy (softmax bersama [vocab ++ source]); token OOV lewat copy."""
     if src_mask is not None:
         copy_score = copy_score.masked_fill(~src_mask, -1e10)
-    extended_logits.scatter_add_(1, source_indices, copy_score)
-    return F.log_softmax(extended_logits, dim=1)
+    probs = F.softmax(torch.cat([gen_logits, copy_score], dim=1), dim=1)
+    p_gen, p_copy = probs[:, :vocab_size], probs[:, vocab_size:]
+    ext = torch.zeros((gen_logits.size(0), ext_vocab_size), device=gen_logits.device)
+    ext[:, :vocab_size] = p_gen
+    ext.scatter_add_(1, source_indices, p_copy)
+    return torch.log(ext + 1e-12)
 
 
 # ---------------------------------------------------------------------------
@@ -206,8 +197,8 @@ def build_source_ext(tokens, word2idx, device):
 # Knowledge base: parse bspan, search, lexicalize
 # ---------------------------------------------------------------------------
 def parse_bspan(bspan_text):
-    inf = re.search(r"<inf>\s*(.*?)\s*</inf>", bspan_text)
-    req = re.search(r"<req>\s*(.*?)\s*</req>", bspan_text)
+    inf = re.search(r"<inf>\s*(.*?)\s*</inf>", bspan_text, re.I)
+    req = re.search(r"<req>\s*(.*?)\s*</req>", bspan_text, re.I)
     informable = [v.strip() for v in inf.group(1).split(";") if v.strip()] if inf and inf.group(1).strip() else []
     requestable = [v.strip() for v in req.group(1).split(";") if v.strip()] if req and req.group(1).strip() else []
     return informable, requestable

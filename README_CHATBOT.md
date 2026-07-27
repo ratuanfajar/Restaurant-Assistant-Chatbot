@@ -19,7 +19,7 @@ Lalu buka `http://localhost:8501`.
 |------|-------|
 | `app.py` | UI Streamlit (riwayat chat, tombol reset, panel debug belief-span/KB) |
 | `chatbot_engine.py` | Engine inferensi mandiri: arsitektur TSCP + tokenisasi + KB search + lexicalization + greedy decoding |
-| `checkpoints/tscp_rl_best.pt` | Bobot model (setelah RL fine-tuning) — juga menyimpan `word2idx` |
+| `checkpoints/tscp_supervised_v2_best.pt` | Bobot model (supervised v2) — juga menyimpan `word2idx` |
 | `data/CamRestDB.json` | Knowledge base 110 restoran untuk KB search & lexicalization |
 
 ## Alur per turn
@@ -45,6 +45,10 @@ Percakapan bersifat multi-turn: `chatbot_engine.RestaurantAssistant` menyimpan
 - **Decoding**: dipakai *greedy* (bukan beam search seperti paper Section 5.2). Ini
   disengaja — metrik checkpoint diukur dengan greedy, jadi output chatbot konsisten
   dengan angka evaluasi yang dilaporkan.
-- Checkpoint memakai belief-span tag **lowercase** (`<inf>`/`<req>`) dan vocab 755;
-  `chatbot_engine.py` mengikuti konvensi ini. Engine tidak bergantung pada modul
-  preprocessing/training mana pun — `word2idx` dibaca langsung dari checkpoint.
+- Checkpoint memakai belief-span tag **`<Inf>`/`<Req>`** (kapital, ikut paper) dan vocab 613
+  (pipeline v2). Engine tidak bergantung pada modul training — `word2idx` dibaca langsung
+  dari checkpoint.
+- **Pilihan checkpoint**: dipakai **supervised v2** karena responsnya lebih natural. Model
+  **RL v2** (`tscp_rl_v2_best.pt`) menang di Success F1 tapi cenderung *reward-hacking*
+  (mengulang placeholder slot), sehingga teksnya kurang enak dibaca untuk demo. Ganti path
+  `CHECKPOINT` di `app.py` bila ingin memakai model RL.

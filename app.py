@@ -13,7 +13,9 @@ import streamlit as st
 from chatbot_engine import RestaurantAssistant
 
 ROOT = Path(__file__).resolve().parent
-CHECKPOINT = ROOT / "checkpoints" / "tscp_rl_best.pt"
+# v2 supervised dipakai: respons lebih natural drpd RL v2 yang reward-hacking
+# (mengulang placeholder). Ganti ke "tscp_rl_v2_best.pt" bila ingin model RL.
+CHECKPOINT = ROOT / "checkpoints" / "tscp_supervised_v2_best.pt"
 DB_PATH = ROOT / "data" / "CamRestDB.json"
 
 st.set_page_config(page_title="Asisten Restoran Cambridge", page_icon="🍽️", layout="centered")
