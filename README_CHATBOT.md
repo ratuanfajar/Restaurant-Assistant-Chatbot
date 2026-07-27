@@ -42,6 +42,9 @@ Percakapan bersifat multi-turn: `chatbot_engine.RestaurantAssistant` menyimpan
 - Model dilatih pada data berbahasa Inggris — berikan input dalam bahasa Inggris.
 - Slot yang dikenali: masakan (mis. italian, chinese), area (centre/north/south/east/west),
   harga (cheap/moderate/expensive); permintaan alamat / nomor telepon / kode pos.
+- **Decoding**: dipakai *greedy* (bukan beam search seperti paper Section 5.2). Ini
+  disengaja — metrik checkpoint diukur dengan greedy, jadi output chatbot konsisten
+  dengan angka evaluasi yang dilaporkan.
 - Checkpoint memakai belief-span tag **lowercase** (`<inf>`/`<req>`) dan vocab 755;
   `chatbot_engine.py` mengikuti konvensi ini. Engine tidak bergantung pada modul
   preprocessing/training mana pun — `word2idx` dibaca langsung dari checkpoint.

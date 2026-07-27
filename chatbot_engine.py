@@ -295,6 +295,11 @@ def lexicalize_response(response, kb_matches):
 
 # ---------------------------------------------------------------------------
 # Greedy decoding
+#
+# Catatan fidelity: paper (Section 5.2) memakai beam search size 10. Di sini
+# sengaja dipakai greedy karena metrik checkpoint (Success F1 0.83 dsb.) juga
+# diukur dengan greedy di notebook evaluasi — jadi output chatbot konsisten
+# dengan angka yang dilaporkan. Beam search bisa ditambahkan bila diperlukan.
 # ---------------------------------------------------------------------------
 def _greedy(forward_step_fn, source_ext, ext_vocab_size, oov_tokens,
             word2idx, idx2word, init_hidden, max_len, device, extra=None):
