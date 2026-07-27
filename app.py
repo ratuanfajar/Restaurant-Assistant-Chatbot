@@ -1,112 +1,115 @@
-"""
-Streamlit chatbot untuk asisten reservasi restoran (CamRest676).
-Model: Two Stage CopyNet (TSCP) hasil replikasi paper Sequicity (Lei et al., 2018),
-setelah RL fine-tuning (checkpoint tscp_rl_best.pt).
-
-Jalankan:  streamlit run app.py
-"""
+"""Streamlit chat UI for the restaurant assistant."""
 
 from pathlib import Path
 
 import streamlit as st
 
-from chatbot_engine import RestaurantAssistant
+from src.chatbot_engine import RestaurantAssistant
 
 ROOT = Path(__file__).resolve().parent
-# v2 supervised dipakai: respons lebih natural drpd RL v2 yang reward-hacking
-# (mengulang placeholder). Ganti ke "tscp_rl_v2_best.pt" bila ingin model RL.
+
+# Supervised v2 gives more natural replies than the RL model (which repeats slots).
 CHECKPOINT = ROOT / "checkpoints" / "tscp_supervised_v2_best.pt"
 DB_PATH = ROOT / "data" / "CamRestDB.json"
 
-st.set_page_config(page_title="Asisten Restoran Cambridge", page_icon="🍽️", layout="centered")
+STATUS_LABEL = {
+    "no_constraint": "no constraint yet", "no_match": "no match",
+    "exact": "exact match", "multiple": "multiple matches",
+    "empty_input": "empty input", "out_of_domain": "out of domain",
+}
+_SKIP_DETAILS = {"empty_input", "out_of_domain"}
+
+st.set_page_config(page_title="Restaurant Assistant", layout="centered")
 
 
-@st.cache_resource(show_spinner="Memuat model TSCP...")
+@st.cache_resource(show_spinner="Loading the assistant...")
 def load_bot():
     return RestaurantAssistant(str(CHECKPOINT), str(DB_PATH), device="cpu")
 
 
 def new_conversation():
-    bot = load_bot()
-    bot.reset()
+    load_bot().reset()
     st.session_state.messages = []
-    st.session_state.last_debug = None
 
 
-# --- Sidebar ---
+def render_details(result):
+    """Per-turn pipeline output: belief span, KB search, delexicalized response, KB entry."""
+    with st.expander("Processing details"):
+        st.markdown(f"**Belief span (B_t):** `{result['bspan']}`")
+        st.markdown(
+            f"**KB search (k_t):** `{result['kt']}` -> "
+            f"{STATUS_LABEL.get(result.get('status'), '-')} "
+            f"({result['num_matches']} restaurants matched)"
+        )
+        st.markdown(f"**Response (delexicalized):** `{result['response_delex']}`")
+        if result.get("kb_match"):
+            m = result["kb_match"]
+            st.markdown(
+                f"**Selected restaurant:** {m.get('name', '-')} — "
+                f"{m.get('food', '-')}, {m.get('area', '-')}, {m.get('pricerange', '-')}"
+            )
+
+
+# Sidebar: how to use + examples + debug toggle
 with st.sidebar:
-    st.header("🍽️ Asisten Restoran")
-    st.caption(
-        "Chatbot task-oriented berbasis **Two Stage CopyNet (TSCP)** — "
-        "replikasi paper *Sequicity* (Lei et al., ACL 2018), dataset CamRest676."
-    )
+    st.subheader("How to use")
     st.markdown(
-        "**Cara pakai:** minta rekomendasi restoran berdasarkan jenis masakan, "
-        "area (centre/north/south/east/west), atau kisaran harga "
-        "(cheap/moderate/expensive), lalu tanyakan alamat / nomor telepon / kode pos."
+        "Ask for a restaurant by **cuisine**, **area** "
+        "(centre / north / south / east / west), or **price** "
+        "(cheap / moderate / expensive). Then ask for its **address**, "
+        "**phone number**, or **postcode**."
     )
-    if st.button("🔄 Percakapan baru", use_container_width=True):
+    st.info("This assistant understands **English only**.")
+
+    st.markdown("**Examples**")
+    for ex in [
+        "I'm looking for a cheap restaurant in the centre",
+        "Do you have any Italian food?",
+        "What is the address and phone number?",
+    ]:
+        st.markdown(f"- _{ex}_")
+
+    st.divider()
+    show_details = st.toggle("Show processing details", value=True)
+    if st.button("New conversation", use_container_width=True):
         new_conversation()
         st.rerun()
 
-    show_debug = st.toggle("Tampilkan detail model (belief span / KB)", value=True)
 
-    st.divider()
-    st.subheader("Contoh")
-    examples = [
-        "i'm looking for a cheap restaurant in the centre",
-        "do you have any italian food?",
-        "what is the address and phone number?",
-    ]
-    for ex in examples:
-        st.markdown(f"- _{ex}_")
-
-
-# --- State init ---
+# State
 if "messages" not in st.session_state:
     new_conversation()
 
 bot = load_bot()
 
-st.title("Asisten Reservasi Restoran")
-st.caption("Tanya dalam bahasa Inggris (model dilatih pada dataset CamRest676 yang berbahasa Inggris).")
+st.title("Restaurant Assistant")
 
-# --- Render riwayat chat ---
+# Conversation
+if not st.session_state.messages:
+    with st.chat_message("assistant"):
+        st.markdown(
+            "Hi! I can help you find a restaurant. Tell me what you're looking for — "
+            "a cuisine, an area, or a price range. Please chat in English."
+        )
+
 for msg in st.session_state.messages:
-    with st.chat_message(msg["role"], avatar="🧑" if msg["role"] == "user" else "🤖"):
+    with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
+        result = msg.get("result")
+        if show_details and result and result.get("status") not in _SKIP_DETAILS:
+            render_details(result)
 
-# --- Input ---
-if prompt := st.chat_input("Contoh: i want an expensive restaurant in the south"):
+if prompt := st.chat_input("Message the assistant (in English)"):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.chat_message("user", avatar="🧑"):
+    with st.chat_message("user"):
         st.markdown(prompt)
 
-    with st.chat_message("assistant", avatar="🤖"):
-        with st.spinner("Berpikir..."):
+    with st.chat_message("assistant"):
+        with st.spinner("Thinking..."):
             result = bot.respond(prompt)
-        reply = result["response"].strip() or "_(maaf, saya tidak dapat menghasilkan respons)_"
+        reply = result["response"].strip() or "_Sorry, I couldn't generate a response._"
         st.markdown(reply)
+        if show_details and result.get("status") not in _SKIP_DETAILS:
+            render_details(result)
 
-        if show_debug:
-            with st.expander("🔍 Detail model (turn ini)"):
-                st.markdown(f"**Belief span (B_t):** `{result['bspan']}`")
-                status_label = {
-                    "no_constraint": "belum ada constraint",
-                    "no_match": "no match", "exact": "exact match",
-                    "multiple": "multiple match", "empty_input": "input kosong",
-                }
-                st.markdown(
-                    f"**KB search (k_t):** `{result['kt']}` "
-                    f"→ {status_label.get(result.get('status'), '-')} "
-                    f"({result['num_matches']} restoran cocok)"
-                )
-                st.markdown(f"**Response (delex):** `{result['response_delex']}`")
-                if result.get("kb_match"):
-                    m = result["kb_match"]
-                    st.markdown(
-                        f"**Restoran terpilih:** {m.get('name','-')} — "
-                        f"{m.get('food','-')}, {m.get('area','-')}, {m.get('pricerange','-')}"
-                    )
-
-    st.session_state.messages.append({"role": "assistant", "content": reply})
+    st.session_state.messages.append({"role": "assistant", "content": reply, "result": result})

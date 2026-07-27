@@ -177,7 +177,7 @@ class TSCP(nn.Module):
         return loss_b + loss_r, loss_b, loss_r
 
 
-# ------------------------- Inference & evaluasi -------------------------
+# Inference & evaluasi
 
 @torch.no_grad()
 def _greedy(decoder, hidden, memory, src, ext_size, inv_oov, word2idx, idx2word, kt=None, max_len=50):

@@ -1,10 +1,6 @@
 """
 Engine inferensi TSCP (Two Stage CopyNet) untuk chatbot restoran.
 
-Mandiri: hanya butuh checkpoint (menyimpan word2idx-nya sendiri) + CamRestDB.json.
-Arsitektur di sini identik dengan yang melatih checkpoint v2
-(belief-span tags <Inf>/<Req>, vocab 613), sehingga state_dict langsung ter-load.
-
 Alur per turn (mengikuti paper Sequicity, Lei et al. 2018):
     input  = B_{t-1} + R_{t-1} + U_t
     stage1 = decode belief span B_t          (attn + copy dari input X)
@@ -21,9 +17,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-# ---------------------------------------------------------------------------
 # Konstanta (harus cocok dengan konvensi checkpoint v2: tag kapital <Inf>/<Req>)
-# ---------------------------------------------------------------------------
 PAD_TOKEN, SOS_TOKEN, EOS_TOKEN, UNK_TOKEN = "<pad>", "<sos>", "<eos>", "<unk>"
 INF_OPEN, INF_CLOSE, REQ_OPEN, REQ_CLOSE = "<Inf>", "</Inf>", "<Req>", "</Req>"
 SLOT_TOKENS = ["NAME_SLOT", "ADDRESS_SLOT", "PHONE_SLOT", "POSTCODE_SLOT",
@@ -43,9 +37,7 @@ MAX_DECODE_LEN_BSPAN = 30
 MAX_DECODE_LEN_RESPONSE = 60
 
 
-# ---------------------------------------------------------------------------
 # Arsitektur model
-# ---------------------------------------------------------------------------
 class Encoder(nn.Module):
     def __init__(self, vocab_size, embed_size, hidden_size, num_layers=1, dropout=0.0):
         super().__init__()
@@ -153,9 +145,7 @@ def combine_copy_probs(gen_logits, copy_score, source_indices, ext_vocab_size, v
     return torch.log(ext + 1e-12)
 
 
-# ---------------------------------------------------------------------------
 # Tokenisasi & indexing
-# ---------------------------------------------------------------------------
 def tokenize(text):
     """Pecah teks jadi token; lindungi token khusus, pisahkan tanda baca."""
     sorted_protected = sorted(SPECIAL_TOKENS, key=len, reverse=True)
@@ -193,9 +183,7 @@ def build_source_ext(tokens, word2idx, device):
     return ext_vocab_size, oov_tokens, torch.tensor([ext], dtype=torch.long, device=device)
 
 
-# ---------------------------------------------------------------------------
 # Knowledge base: parse bspan, search, lexicalize
-# ---------------------------------------------------------------------------
 def parse_bspan(bspan_text):
     inf = re.search(r"<inf>\s*(.*?)\s*</inf>", bspan_text, re.I)
     req = re.search(r"<req>\s*(.*?)\s*</req>", bspan_text, re.I)
@@ -331,12 +319,23 @@ class RestaurantAssistant:
         self.model.eval()
         with open(db_path, "r", encoding="utf-8") as f:
             self.database = json.load(f)
+        # kosakata "domain" untuk deteksi input di luar domain: semua kata vocab
+        # (kata bahasa Inggris dari data) + token nilai slot dari DB (mis. seafood).
+        self.known_domain = set(self.word2idx)
+        for e in self.database:
+            for slot in INFORMABLE_SLOTS:
+                self.known_domain.update(str(e.get(slot, "")).lower().split())
         self.reset()
 
     def reset(self):
         """Mulai percakapan baru (B_0 = R_0 = kosong)."""
         self.prev_bspan = ""
         self.prev_response = ""
+
+    def _fallback(self, message, status):
+        """Jawaban terkontrol (tanpa menjalankan model / mengubah state)."""
+        return {"bspan": self.prev_bspan, "response": message, "response_delex": "",
+                "num_matches": 0, "kt": [0., 0., 1.], "kb_match": None, "status": status}
 
     @torch.no_grad()
     def respond(self, user_utterance):
@@ -346,17 +345,19 @@ class RestaurantAssistant:
         # 0. guard input kosong/whitespace: jangan jalankan model & jangan ubah state
         user_clean = user_utterance.lower().strip()
         if not user_clean:
-            return {
-                "bspan": self.prev_bspan,
-                "response": "Boleh beri tahu jenis restoran yang Anda cari? "
-                            "(mis. jenis masakan, area centre/north/south/east/west, "
-                            "atau harga cheap/moderate/expensive)",
-                "response_delex": "",
-                "num_matches": 0,
-                "kt": [0., 0., 1.],
-                "kb_match": None,
-                "status": "empty_input",
-            }
+            return self._fallback(
+                "Please tell me what kind of restaurant you're looking for — "
+                "a cuisine, an area, or a price range.", "empty_input")
+
+        # 0b. guard out-of-domain: bila tak ada satu pun kata yang dikenali (mis. input
+        # non-Inggris/gibberish seperti "assalamualaikum"), model tak punya sinyal ->
+        # beri jawaban jujur, jangan mengarang respons restoran.
+        content = [t for t in tokenize(user_clean)
+                   if t not in SPECIAL_TOKENS and any(ch.isalnum() for ch in t)]
+        if content and not any(t in self.known_domain for t in content):
+            return self._fallback(
+                "Sorry, I can only help you find restaurants, and I understand English only. "
+                "Try telling me a cuisine, area, or price range.", "out_of_domain")
 
         # 1. format input B_{t-1} R_{t-1} U_t
         parts = [p for p in (self.prev_bspan, self.prev_response) if p]
