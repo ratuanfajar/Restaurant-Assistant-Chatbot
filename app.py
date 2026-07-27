@@ -17,7 +17,7 @@ STATUS_LABEL = {
     "exact": "exact match", "multiple": "multiple matches",
     "empty_input": "empty input", "out_of_domain": "out of domain",
 }
-_SKIP_DETAILS = {"empty_input", "out_of_domain"}
+_SKIP_DETAILS = {"empty_input", "out_of_domain", "no_restaurant_signal"}
 
 st.set_page_config(page_title="Restaurant Assistant", layout="centered")
 

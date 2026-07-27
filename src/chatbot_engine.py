@@ -30,6 +30,19 @@ DB_FIELD_TO_SLOT = {"name": "NAME_SLOT", "address": "ADDRESS_SLOT", "phone": "PH
                     "postcode": "POSTCODE_SLOT", "food": "FOOD_SLOT", "area": "AREA_SLOT",
                     "pricerange": "PRICERANGE_SLOT"}
 
+# Kata kunci "sinyal restoran": kalau input tak memuat satupun ini (dan bukan nilai slot
+# dari DB), kemungkinan bukan permintaan restoran (mis. sapaan "good morning").
+RESTAURANT_KEYWORDS = {
+    "restaurant", "restaurants", "food", "foods", "eat", "eating", "dine", "dining",
+    "cuisine", "serve", "serves", "serving", "menu", "meal", "lunch", "dinner", "breakfast",
+    "takeaway", "takeout", "hungry", "place", "places", "table", "book", "booking",
+    "reserve", "reservation", "recommend", "recommendation", "recommendations", "suggest",
+    "looking", "find", "want", "need", "any", "options", "option", "something", "anything",
+    "address", "phone", "number", "telephone", "postcode", "location", "call", "contact", "code",
+    "cheap", "moderate", "moderately", "expensive", "price", "priced", "pricerange", "cost",
+    "budget", "affordable", "north", "south", "east", "west", "centre", "center", "area", "near",
+}
+
 EMBED_SIZE = 50
 HIDDEN_SIZE = 50
 KB_INDICATOR_SIZE = 3
@@ -271,15 +284,7 @@ def lexicalize_response(response, kb_matches):
             out = out.replace(slot, val)
     return out
 
-
-# ---------------------------------------------------------------------------
 # Greedy decoding
-#
-# Catatan fidelity: paper (Section 5.2) memakai beam search size 10. Di sini
-# sengaja dipakai greedy karena metrik checkpoint (Success F1 0.83 dsb.) juga
-# diukur dengan greedy di notebook evaluasi — jadi output chatbot konsisten
-# dengan angka yang dilaporkan. Beam search bisa ditambahkan bila diperlukan.
-# ---------------------------------------------------------------------------
 def _greedy(forward_step_fn, source_ext, ext_vocab_size, oov_tokens,
             word2idx, idx2word, init_hidden, max_len, device, extra=None):
     vocab_size = len(word2idx)
@@ -304,10 +309,7 @@ def _greedy(forward_step_fn, source_ext, ext_vocab_size, oov_tokens,
         dec_input = torch.tensor([[nxt]], dtype=torch.long, device=device)
     return out_tokens
 
-
-# ---------------------------------------------------------------------------
 # Chatbot
-# ---------------------------------------------------------------------------
 class RestaurantAssistant:
     def __init__(self, checkpoint_path, db_path, device="cpu"):
         self.device = device
@@ -325,6 +327,11 @@ class RestaurantAssistant:
         for e in self.database:
             for slot in INFORMABLE_SLOTS:
                 self.known_domain.update(str(e.get(slot, "")).lower().split())
+        # sinyal restoran = nilai slot informable dari DB + kata kunci restoran
+        self.restaurant_signal = set(RESTAURANT_KEYWORDS)
+        for e in self.database:
+            for slot in INFORMABLE_SLOTS:
+                self.restaurant_signal.update(str(e.get(slot, "")).lower().split())
         self.reset()
 
     def reset(self):
@@ -358,6 +365,14 @@ class RestaurantAssistant:
             return self._fallback(
                 "Sorry, I can only help you find restaurants, and I understand English only. "
                 "Try telling me a cuisine, area, or price range.", "out_of_domain")
+
+        # 0c. guard tanpa sinyal restoran: input bahasa Inggris tapi bukan permintaan
+        # restoran (mis. "good morning", "how are you") -> sapa/klarifikasi, bukan mengarang.
+        if content and not any(t in self.restaurant_signal for t in content):
+            return self._fallback(
+                "Hi! I can help you find a restaurant. Tell me a cuisine, an area "
+                "(centre / north / south / east / west), or a price range "
+                "(cheap / moderate / expensive).", "no_restaurant_signal")
 
         # 1. format input B_{t-1} R_{t-1} U_t
         parts = [p for p in (self.prev_bspan, self.prev_response) if p]
