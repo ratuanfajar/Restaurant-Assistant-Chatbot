@@ -284,6 +284,17 @@ def lexicalize_response(response, kb_matches):
             out = out.replace(slot, val)
     return out
 
+
+# Kata pemicu "minta restoran lain" (di luar paper): dipakai untuk memutuskan apakah
+# pointer restoran maju ke match berikutnya, atau tetap di restoran yang sama.
+_ANOTHER_TRIGGERS = {"else", "another", "other", "others", "different",
+                     "next", "alternative", "alternatives", "elsewhere"}
+
+
+def wants_another(user_clean):
+    """True bila user meminta opsi restoran lain (mis. 'what else', 'another one')."""
+    return any(t in _ANOTHER_TRIGGERS for t in tokenize(user_clean))
+
 # Greedy decoding
 def _greedy(forward_step_fn, source_ext, ext_vocab_size, oov_tokens,
             word2idx, idx2word, init_hidden, max_len, device, extra=None):
@@ -338,6 +349,9 @@ class RestaurantAssistant:
         """Mulai percakapan baru (B_0 = R_0 = kosong)."""
         self.prev_bspan = ""
         self.prev_response = ""
+        # Pointer restoran: query aktif + indeks match yang sedang ditampilkan.
+        self.match_key = None
+        self.match_cursor = 0
 
     def _fallback(self, message, status):
         """Jawaban terkontrol (tanpa menjalankan model / mengubah state)."""
@@ -368,7 +382,10 @@ class RestaurantAssistant:
 
         # 0c. guard tanpa sinyal restoran: input bahasa Inggris tapi bukan permintaan
         # restoran (mis. "good morning", "how are you") -> sapa/klarifikasi, bukan mengarang.
-        if content and not any(t in self.restaurant_signal for t in content):
+        # PENGECUALIAN: permintaan "yang lain" (what else / another) saat sudah ada query
+        # aktif tetap dilayani, walau kalimatnya tak memuat kata bertema-restoran.
+        asking_another = bool(self.prev_bspan) and wants_another(user_clean)
+        if content and not asking_another and not any(t in self.restaurant_signal for t in content):
             return self._fallback(
                 "Hi! I can help you find a restaurant. Tell me a cuisine, an area "
                 "(centre / north / south / east / west), or a price range "
@@ -398,6 +415,19 @@ class RestaurantAssistant:
         kb_matches, kt, kb_status = search_kb(bspan_text, self.database)
         kt = kt.to(device)
 
+        # 4b. pointer "restoran berikutnya" (di luar paper):
+        #  - query berubah  -> reset ke match pertama
+        #  - query sama & user minta yang lain -> maju ke match berikutnya
+        #  - query sama tanpa pemicu (mis. "what is the address?") -> tetap restoran sama
+        inf_now, _ = parse_bspan(bspan_text)
+        query_key = tuple(sorted(v.lower() for v in inf_now))
+        if query_key != self.match_key:
+            self.match_key = query_key
+            self.match_cursor = 0
+        elif kb_matches and wants_another(user_clean):
+            self.match_cursor = min(self.match_cursor + 1, len(kb_matches) - 1)
+        selected_match = kb_matches[self.match_cursor] if kb_matches else None
+
         # 5. bspan hidden states untuk stage 2
         bspan_core = tokenize(bspan_text)
         full_bspan_tokens = [SOS_TOKEN] + bspan_core
@@ -414,8 +444,8 @@ class RestaurantAssistant:
             MAX_DECODE_LEN_RESPONSE, device)
         response_delex = " ".join(response_tokens)
 
-        # 7. lexicalize (hanya bila ada entri terpilih) + bersihkan placeholder sisa
-        response_final = lexicalize_response(response_delex, kb_matches)
+        # 7. lexicalize dengan restoran TERPILIH (pointer) + bersihkan placeholder sisa
+        response_final = lexicalize_response(response_delex, [selected_match] if selected_match else [])
         response_final = strip_leftover_slots(response_final)
 
         # 8. update state (konteks turn berikutnya pakai response DELEX, spt training)
@@ -428,6 +458,6 @@ class RestaurantAssistant:
             "response_delex": response_delex,
             "num_matches": len(kb_matches),
             "kt": kt.tolist(),
-            "kb_match": kb_matches[0] if kb_matches else None,
+            "kb_match": selected_match,
             "status": kb_status,
         }
