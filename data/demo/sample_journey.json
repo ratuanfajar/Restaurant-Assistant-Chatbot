@@ -1,0 +1,118 @@
+{
+ "keterangan": "Perjalanan 1 sampel data melewati 11 tahap preprocessing TSCP (untuk presentasi).",
+ "sample_id": {
+  "dialogue_id": 520,
+  "turn": 1,
+  "split": "train",
+  "row_index_in_split": 84
+ },
+ "tahap_02_raw": {
+  "usr": "What kind of food do they serve?",
+  "sys": "la margherita is an italian restaurant in the area of west in the cheap price range. "
+ },
+ "tahap_03_split": {
+  "masuk_split": "train",
+  "ukuran_dialog": {
+   "train": 405,
+   "val": 135,
+   "test": 136
+  },
+  "catatan": "split per-dialog (semua turn 1 dialog masuk split sama), acak seed 42"
+ },
+ "tahap_04_delex": {
+  "sys_delex": "NAME_SLOT is an FOOD_SLOT restaurant in the area of AREA_SLOT in the PRICERANGE_SLOT price range.",
+  "catatan": "nilai entitas -> placeholder slot; hanya respons sistem yang di-delex"
+ },
+ "tahap_05_bspan": {
+  "bspan": "<Inf> cheap ; west </Inf> <Req> food </Req>",
+  "catatan": "<Inf> nilai informable </Inf> <Req> nama slot request </Req>, dari SLU user"
+ },
+ "tahap_06_format": {
+  "input": "<Inf> cheap ; west </Inf> <Req>  </Req> how about NAME_SLOT? what kind of food do they serve?",
+  "target_bspan": "<Inf> cheap ; west </Inf> <Req> food </Req>",
+  "target_response": "NAME_SLOT is an FOOD_SLOT restaurant in the area of AREA_SLOT in the PRICERANGE_SLOT price range.",
+  "catatan": "input = B_(t-1) R_(t-1) U_t ; bentuk data jadi FLAT"
+ },
+ "tahap_07_tokenized": {
+  "tokens_input": ["<Inf>", "cheap", ";", "west", "</Inf>", "<Req>", "</Req>", "how", "about", "NAME_SLOT", "?", "what", "kind", "of", "food", "do", "they", "serve", "?"],
+  "tokens_bspan": ["<sos>", "<Inf>", "cheap", ";", "west", "</Inf>", "<Req>", "food", "</Req>", "<eos>"],
+  "tokens_response": ["<sos>", "NAME_SLOT", "is", "an", "FOOD_SLOT", "restaurant", "in", "the", "area", "of", "AREA_SLOT", "in", "the", "PRICERANGE_SLOT", "price", "range", ".", "<eos>"],
+  "catatan": "token khusus dilindungi; +<sos>/<eos> di bspan & response"
+ },
+ "tahap_08_vocab": {
+  "vocab_size": 613,
+  "contoh_mapping_token_di_sampel_ini": {
+   "<Inf>": 4,
+   "cheap": 42,
+   ";": 16,
+   "west": 61,
+   "</Inf>": 5,
+   "<Req>": 6,
+   "</Req>": 7,
+   "how": 94,
+   "about": 89,
+   "NAME_SLOT": 8,
+   "?": 20,
+   "what": 58,
+   "kind": 179,
+   "of": 24,
+   "food": 28,
+   "do": 67,
+   "they": 95,
+   "serve": 99,
+   "<sos>": 1,
+   "<eos>": 2,
+   "is": 18,
+   "an": 75,
+   "FOOD_SLOT": 12,
+   "restaurant": 32,
+   "in": 21,
+   "the": 17,
+   "area": 66,
+   "AREA_SLOT": 13,
+   "PRICERANGE_SLOT": 14,
+   "price": 44,
+   "range": 45,
+   ".": 15
+  },
+  "catatan": "word2idx dibangun dari TRAIN saja (min_freq=2)"
+ },
+ "tahap_09_indexed": {
+  "input_indices": [4, 42, 16, 61, 5, 6, 7, 94, 89, 8, 20, 58, 179, 24, 28, 67, 95, 99, 20],
+  "input_oov": [],
+  "bspan_indices": [1, 4, 42, 16, 61, 5, 6, 28, 7, 2],
+  "response_indices": [1, 8, 18, 75, 12, 32, 21, 17, 66, 24, 13, 21, 17, 14, 44, 45, 15, 2],
+  "catatan": "token -> index; OOV dapat index >= vocab_size (mekanisme CopyNet). Sampel ini tak ada OOV."
+ },
+ "tahap_10_padded": {
+  "max_lengths": {
+   "input": 70,
+   "bspan_input": 15,
+   "bspan_target": 15,
+   "response_input": 50,
+   "response_target": 50
+  },
+  "input_padded": [4, 42, 16, 61, 5, 6, 7, 94, 89, 8, 20, 58, 179, 24, 28, 67, 95, 99, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  "bspan_input_padded": [1, 4, 42, 16, 61, 5, 6, 28, 7, 0, 0, 0, 0, 0, 0],
+  "bspan_target_padded": [4, 42, 16, 61, 5, 6, 28, 7, 2, 0, 0, 0, 0, 0, 0],
+  "response_input_padded": [1, 8, 18, 75, 12, 32, 21, 17, 66, 24, 13, 21, 17, 14, 44, 45, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  "response_target_padded": [8, 18, 75, 12, 32, 21, 17, 66, 24, 13, 21, 17, 14, 44, 45, 15, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+  "catatan": "bspan/response dipecah input([:-1]) vs target([1:]) = teacher-forcing shift, lalu di-pad dgn 0"
+ },
+ "tahap_11_tensor": {
+  "shape_penuh_split_train": {
+   "input_tensor": [1635, 70],
+   "bspan_input_tensor": [1635, 15],
+   "bspan_target_tensor": [1635, 15],
+   "response_input_tensor": [1635, 50],
+   "response_target_tensor": [1635, 50]
+  },
+  "dtype": "int64",
+  "baris_sampel_ini": {
+   "input_tensor": [4, 42, 16, 61, 5, 6, 7, 94, 89, 8, 20, 58, 179, 24, 28, 67, 95, 99, 20, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+   "response_input_tensor": [1, 8, 18, 75, 12, 32, 21, 17, 66, 24, 13, 21, 17, 14, 44, 45, 15, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+   "response_target_tensor": [8, 18, 75, 12, 32, 21, 17, 66, 24, 13, 21, 17, 14, 44, 45, 15, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+  },
+  "catatan": "5 tensor siap ke model; input->encoder, *_input->decoder input, *_target->hitung loss"
+ }
+}
