@@ -1,1 +1,11 @@
-Nothing should be ignored in this case, as the changes only include source code files (.py, .md) and a config file (.py), with no build artifacts, dependencies, or temporary files present.
+# Python
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+
+# Virtual env
+.venv/
+venv/
+
+# Output preprocessing yang bisa dibuat ulang (tidak dibutuhkan app/deploy)
+data/processed/

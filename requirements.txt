@@ -1,0 +1,5 @@
+# Dependency runtime untuk Streamlit Cloud (hanya yang dipakai app.py + chatbot_engine.py).
+# torch versi CPU agar ringan (Streamlit Cloud tidak punya GPU).
+--extra-index-url https://download.pytorch.org/whl/cpu
+streamlit==1.60.0
+torch==2.13.0+cpu
